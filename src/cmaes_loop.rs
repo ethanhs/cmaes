@@ -15,8 +15,8 @@ use super::options::{CMAESOptions, CMAESEndConditions};
 
 const BAD_FITNESS: f64 = 10e10;
 
-pub fn cmaes_loop<T>(object: &T, options: CMAESOptions) -> Option<(Vec<f64>, f64)>
-    where T: 'static + FitnessFunction + Clone + Send + Sync
+pub fn cmaes_loop_single<T>(object: &T, options: CMAESOptions) -> Option<(Vec<f64>, f64)>
+    where T: 'static + FitnessFunction + Clone
 {
     //! Minimizes a function. Takes as an argument a type that implements the
     //! FitnessFunction trait and an instance of the CMAESOptions struct.
@@ -141,9 +141,6 @@ pub fn cmaes_loop<T>(object: &T, options: CMAESOptions) -> Option<(Vec<f64>, f64
             break;
         }
 
-        // More thread stuff
-        generation = Vec::new();
-
         let object = Arc::new(object.clone());
         let vectors = Arc::new(eigenvectors.clone());
         let values = Arc::new(eigenvalues.clone());
@@ -182,38 +179,7 @@ pub fn cmaes_loop<T>(object: &T, options: CMAESOptions) -> Option<(Vec<f64>, f64
         });
 
         // Create new individuals
-        
-        if threads > 0 {
-            for t in per_thread.clone() {
-                let thread_object = object.clone();
-                let thread_mean = mean.clone();
-                let thread_vectors = vectors.clone();
-                let thread_values = values.clone();
-                let do_work = do_work.clone();
-
-                let handle = thread::spawn(move || {
-                    do_work(thread_values, thread_vectors, thread_mean, thread_object, t)
-                });
-
-                // User-defined function might panic
-                let individuals = match handle.join() {
-                    Ok(v) => v,
-                    Err(..) => {
-                        println!("Warning: Early return due to panic");
-                        return match generation.first() {
-                            Some(i) => Some((i.parameters.clone(), i.fitness)),
-                            None => return None
-                        }
-                    }
-                };
-
-                for item in individuals {
-                    generation.push(item);
-                }
-            }
-        } else {
-            generation = do_work(values, vectors, mean, object, sample_size);
-        }
+        generation = do_work(values, vectors, mean, object, sample_size);
 
         // Increment function evaluations counter
         g += sample_size as usize;
