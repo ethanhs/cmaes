@@ -1,6 +1,8 @@
 extern crate rand;
 extern crate la;
 
+use std::thread;
+use std::sync::Arc;
 use std::cmp::Ordering;
 
 use la::{Matrix, EigenDecomposition};
@@ -139,15 +141,15 @@ pub fn cmaes_loop_single<T>(object: &T, options: CMAESOptions) -> Option<(Vec<f6
             break;
         }
 
-        let object = object.clone();
-        let vectors = eigenvectors.clone();
-        let values = eigenvalues.clone();
-        let mean = mean_vector.clone();
+        let object = Arc::new(object.clone());
+        let vectors = Arc::new(eigenvectors.clone());
+        let values = Arc::new(eigenvalues.clone());
+        let mean = Arc::new(mean_vector.clone());
 
-        let do_work = move |thread_values: Matrix<f64>,
-                            thread_vectors: Matrix<f64>,
-                            thread_mean: Vec<f64>,
-                            thread_object: T,
+        let do_work = Arc::new(move |thread_values: Arc<Matrix<f64>>,
+                            thread_vectors: Arc<Matrix<f64>>,
+                            thread_mean: Arc<Vec<f64>>,
+                            thread_object: Arc<T>,
                             t: usize| {
             let mut individuals = Vec::new();
 
@@ -158,7 +160,7 @@ pub fn cmaes_loop_single<T>(object: &T, options: CMAESOptions) -> Option<(Vec<f6
 
                 // Sample multivariate normal
                 let parameters = mul_vec_2(&*thread_values.get_data(), &random_values);
-                let parameters = matrix_by_vector(&thread_vectors, &parameters);
+                let parameters = matrix_by_vector(&*thread_vectors, &parameters);
                 let parameters = add_vec(&*thread_mean, &mul_vec(&parameters, step_size));
 
                 // Get fitness of parameters
@@ -174,7 +176,7 @@ pub fn cmaes_loop_single<T>(object: &T, options: CMAESOptions) -> Option<(Vec<f6
             }
 
             individuals
-        };
+        });
 
         // Create new individuals
         generation = do_work(values, vectors, mean, object, sample_size);
